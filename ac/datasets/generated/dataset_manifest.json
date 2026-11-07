@@ -1,0 +1,142 @@
+{
+  "manifest_version": "1.0.0",
+  "project": "AgentCarbon",
+  "generated_at_utc": "2026-10-23T11:56:42.522425+00:00",
+  "source_dataset": {
+    "filename": "Steel_industry_data.csv",
+    "repository_status": "NOT_COMMITTED",
+    "sha256": "90726c0fd007eded3064eebcb8386d0291ea9c028ea106af8d0b3702925b85ad"
+  },
+  "generation_order": [
+    "five_month_dataset_generator.py",
+    "virtual_meter_generator.py",
+    "shop_energy_generator.py",
+    "daily_operations_generator.py",
+    "historical_scd40_generator.py",
+    "evidence_event_generator.py",
+    "carbon_claim_generator.py"
+  ],
+  "dataset_count": 12,
+  "datasets": [
+    {
+      "filename": "real_industrial_foundation.csv",
+      "record_count": 14400,
+      "column_count": 21,
+      "missing_value_count": 0,
+      "file_size_bytes": 3013523,
+      "sha256": "925287f76c426c95f0b688a90dd6aa0477f558c3f82719aa3d141ae77ec0c2de",
+      "data_origin": "PUBLIC_REAL_DATA",
+      "description": "Cleaned and remapped five-month industrial energy foundation."
+    },
+    {
+      "filename": "plant_meter_readings.csv",
+      "record_count": 14400,
+      "column_count": 25,
+      "missing_value_count": 0,
+      "file_size_bytes": 3747891,
+      "sha256": "3d21d6868232a6019c632ddb1be641a1303bd4d4dc7613c3d4a52dfd1376fc1b",
+      "data_origin": "CONTROLLED_SIMULATION",
+      "description": "Four synchronized plant-level electricity meter streams and attack labels."
+    },
+    {
+      "filename": "shop_energy_readings.csv",
+      "record_count": 14400,
+      "column_count": 22,
+      "missing_value_count": 0,
+      "file_size_bytes": 3195184,
+      "sha256": "b1c174ece96af92cf51b93fa96d862a024bec98e929a9dffe4d1a8ea824908c9",
+      "data_origin": "CONTROLLED_SIMULATION",
+      "description": "Shop-wise allocation reconciled to real plant electricity usage."
+    },
+    {
+      "filename": "production_records.csv",
+      "record_count": 150,
+      "column_count": 16,
+      "missing_value_count": 0,
+      "file_size_bytes": 20046,
+      "sha256": "11a2c6016f7e872b2969780c4ec939ca79616c204842d9c94bbafc7171322d1a",
+      "data_origin": "CONTROLLED_SIMULATION",
+      "description": "Daily production records derived from the real energy pattern."
+    },
+    {
+      "filename": "fuel_consumption.csv",
+      "record_count": 150,
+      "column_count": 13,
+      "missing_value_count": 0,
+      "file_size_bytes": 25215,
+      "sha256": "910f1aa132cb695593edb533d9c815a19fa79e7849cf6ceb6c777ec6d0b86e11",
+      "data_origin": "CONTROLLED_SIMULATION",
+      "description": "Daily natural-gas and diesel activity data."
+    },
+    {
+      "filename": "historical_scd40_readings.csv",
+      "record_count": 14400,
+      "column_count": 17,
+      "missing_value_count": 0,
+      "file_size_bytes": 2448354,
+      "sha256": "cc902ab3862e5482f2e293c17355a22932801cab5aa6cf6ee5c6f6086927ecb6",
+      "data_origin": "SIMULATED_HARDWARE",
+      "description": "Historical SCD40-compatible CO2, temperature, and humidity stream."
+    },
+    {
+      "filename": "calibration_events.csv",
+      "record_count": 5,
+      "column_count": 14,
+      "missing_value_count": 0,
+      "file_size_bytes": 1443,
+      "sha256": "50abd62cd9c82e2f2f5d72d362784ff9d5c05627c67eb0ca61e0326bc6b22f22",
+      "data_origin": "SYNTHETIC_DOCUMENT",
+      "description": "Calibration evidence for meters and the SCD40 prototype sensor."
+    },
+    {
+      "filename": "maintenance_events.csv",
+      "record_count": 3,
+      "column_count": 12,
+      "missing_value_count": 0,
+      "file_size_bytes": 922,
+      "sha256": "978c1191ab2475461b27d0703a0eb303e3c8bbbe595b924518cbeb41cd84bb12",
+      "data_origin": "SYNTHETIC_DOCUMENT",
+      "description": "Investigation, repair, and sensor-inspection work-order events."
+    },
+    {
+      "filename": "trust_lifecycle_events.csv",
+      "record_count": 6,
+      "column_count": 9,
+      "missing_value_count": 0,
+      "file_size_bytes": 1103,
+      "sha256": "307849b483699d0c3b40d8e497b1db71185e8981e6a86a2213a8f3aa43f0b2ad",
+      "data_origin": "SYSTEM_DERIVED",
+      "description": "Persistent main-meter trust-state transitions."
+    },
+    {
+      "filename": "emission_factors.csv",
+      "record_count": 3,
+      "column_count": 12,
+      "missing_value_count": 0,
+      "file_size_bytes": 911,
+      "sha256": "85e49a403c641fdad0aee95978744a7732ddc9cdb733f9479efb4227516061ee",
+      "data_origin": "CONFIGURATION_REGISTRY",
+      "description": "Versioned electricity, natural-gas, and diesel emission factors."
+    },
+    {
+      "filename": "daily_carbon_emissions.csv",
+      "record_count": 150,
+      "column_count": 28,
+      "missing_value_count": 0,
+      "file_size_bytes": 38320,
+      "sha256": "b9ae4df26215c334133a2b190ee843b4f05d570251b48aae67f3be3631076f30",
+      "data_origin": "SYSTEM_DERIVED",
+      "description": "Daily Scope 1, claimed Scope 2, and verified Scope 2 calculations."
+    },
+    {
+      "filename": "monthly_carbon_claims.csv",
+      "record_count": 5,
+      "column_count": 26,
+      "missing_value_count": 0,
+      "file_size_bytes": 1905,
+      "sha256": "3aa518990354dc6cefb1afbc98aac53c4c9e4e10cbfb50f6faaad0fc1ffe04b8",
+      "data_origin": "SYSTEM_DERIVED",
+      "description": "Five monthly synchronized claims and verification recommendations."
+    }
+  ]
+}

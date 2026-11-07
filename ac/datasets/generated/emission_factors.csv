@@ -1,0 +1,4 @@
+factor_id,activity_type,scope,factor_value,factor_unit,source_authority,source_document,source_year,effective_from,effective_until,verification_status,notes
+EF-ELECTRICITY-IN-2023-24,PURCHASED_ELECTRICITY,SCOPE_2,0.727,kgCO2_per_kWh,CENTRAL_ELECTRICITY_AUTHORITY_INDIA,CO2_BASELINE_DATABASE_VERSION_20,2023-24,2025-01-01,2026-12-31,OFFICIAL_SOURCE_REFERENCED,Weighted average Indian grid factor used for prototype Scope 2 calculation
+EF-NATURAL-GAS-DEMO-001,NATURAL_GAS,SCOPE_1,2.0,kgCO2e_per_SCM,PROTOTYPE_CONFIG,DEMO_FACTOR_REGISTRY,2026,2026-01-01,2026-12-31,REQUIRES_AUTHORIZED_FACTOR_BEFORE_REAL_DEPLOYMENT,Configurable demonstration factor; not for regulatory reporting
+EF-DIESEL-DEMO-001,DIESEL,SCOPE_1,2.68,kgCO2e_per_litre,PROTOTYPE_CONFIG,DEMO_FACTOR_REGISTRY,2026,2026-01-01,2026-12-31,REQUIRES_AUTHORIZED_FACTOR_BEFORE_REAL_DEPLOYMENT,Configurable demonstration factor; not for regulatory reporting
