@@ -26,18 +26,18 @@ class Sensor(Base):
 
 class SensorReading(Base):
     """One SCD40 sample. `timestamp` is the (simulated) measurement time,
-    `month_number` is the 30-day reporting period it belongs to."""
+    `period` is the calendar month (YYYY-MM) it belongs to."""
     __tablename__ = "sensor_readings"
     __table_args__ = (
         UniqueConstraint("sensor_id", "sequence_number", name="uq_sensor_sequence"),
-        Index("ix_reading_sensor_period", "sensor_id", "month_number"),
+        Index("ix_reading_sensor_period", "sensor_id", "period"),
         Index("ix_reading_sensor_ts", "sensor_id", "timestamp"),
     )
     id: Mapped[int] = mapped_column(primary_key=True)
     sensor_id: Mapped[str] = mapped_column(ForeignKey("sensors.sensor_id", ondelete="CASCADE"))
     timestamp: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     sequence_number: Mapped[int] = mapped_column(Integer)
-    month_number: Mapped[int] = mapped_column(Integer)
+    period: Mapped[str] = mapped_column(String(7))
     co2_ppm: Mapped[float] = mapped_column(Float)
     temperature_c: Mapped[float] = mapped_column(Float)
     humidity_percent: Mapped[float] = mapped_column(Float)
@@ -51,10 +51,10 @@ class SensorReading(Base):
 class SensorPeriodSeal(Base):
     """A closed (complete) monthly sensor dataset with a tamper-evident hash."""
     __tablename__ = "sensor_period_seals"
-    __table_args__ = (UniqueConstraint("company_id", "month_number", name="uq_company_period_seal"),)
+    __table_args__ = (UniqueConstraint("company_id", "period", name="uq_company_period_seal"),)
     id: Mapped[int] = mapped_column(primary_key=True)
     company_id: Mapped[str] = mapped_column(String(80), index=True)
-    month_number: Mapped[int] = mapped_column(Integer)
+    period: Mapped[str] = mapped_column(String(7))
     summary_json: Mapped[str] = mapped_column(Text)
     summary_hash: Mapped[str] = mapped_column(String(64))
     sealed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)

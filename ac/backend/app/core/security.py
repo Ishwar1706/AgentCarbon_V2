@@ -66,8 +66,8 @@ def current_user(
         user = db.scalar(select(User).where(User.id == int(payload["sub"])))
     except Exception as error:
         raise HTTPException(401, "Invalid or expired token.") from error
-    if not user or not user.is_active:
-        raise HTTPException(401, "Inactive or missing user.")
+    if not user or not user.is_active or user.account_status != "ACTIVE":
+        raise HTTPException(401, "Inactive, suspended or unverified account.")
     return user
 
 
@@ -81,17 +81,8 @@ def require_roles(*roles: str):
 
 
 def is_verified_auditor(db: Session, user: User) -> bool:
-    from app.models.workflows import AuditorApplication
-
-    return (
-        db.scalar(
-            select(AuditorApplication).where(
-                AuditorApplication.applicant_user_id == user.id,
-                AuditorApplication.status == "APPROVED",
-            )
-        )
-        is not None
-    )
+    """Auditors are verified once an administrator has activated their account."""
+    return user.role == "AUDITOR" and user.account_status == "ACTIVE"
 
 
 def require_verified_auditor(

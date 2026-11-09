@@ -11,6 +11,7 @@ from simulators.generate_synthetic_company_bundles import (
     DATASET_FILES,
     DEFAULT_OUTPUT_DIR,
     DEFAULT_SOURCE_DIR,
+    SCHEMA_VERSION,
     generate_company_bundles,
 )
 
@@ -19,8 +20,16 @@ COMPANY_PROFILES = {c["company_id"]: c for c in COMPANIES}
 COMPANY_IDS = set(COMPANY_PROFILES)
 
 
+def _bundle_version_ok() -> bool:
+    try:
+        manifest = json.loads((BUNDLES_DIR / "manifest.json").read_text())
+        return manifest.get("schema_version") == SCHEMA_VERSION
+    except Exception:
+        return False
+
+
 def ensure_company_bundles() -> None:
-    incomplete = not (BUNDLES_DIR / "manifest.json").is_file() or any(
+    incomplete = not _bundle_version_ok() or any(
         not (BUNDLES_DIR / cid / name).is_file()
         for cid in COMPANY_IDS
         for name in DATASET_FILES

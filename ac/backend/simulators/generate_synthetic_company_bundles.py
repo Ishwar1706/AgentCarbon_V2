@@ -77,6 +77,82 @@ COMPANIES = (
 )
 
 
+SCHEMA_VERSION = "calendar-v2"
+YEAR = 2026
+MONTH_NAMES = ["Jan", "Feb", "Mar", "Apr", "May"]
+FIFTEEN_MIN_FILES = {"plant_meter_readings.csv", "shop_energy_readings.csv", "historical_scd40_readings.csv"}
+DAILY_FILES = {"daily_carbon_emissions.csv", "production_records.csv", "fuel_consumption.csv"}
+
+
+def _block_indices(n_source: int, n_target: int) -> list[int]:
+    """Calendar months have 28-31 days but the base blocks have 30: trim or repeat the last rows."""
+    if n_target <= n_source:
+        return list(range(n_target))
+    extra = n_target - n_source
+    return list(range(n_source)) + list(range(n_source - extra, n_source))
+
+
+def _calendarize(frame: pd.DataFrame, filename: str) -> pd.DataFrame:
+    import calendar as _cal
+
+    daily = filename in DAILY_FILES
+    per_day = 1 if daily else 96
+    parts, day_offset = [], 0
+    for month in sorted(frame["month_number"].unique()):
+        block = frame[frame["month_number"] == month].reset_index(drop=True)
+        days = _cal.monthrange(YEAR, int(month))[1]
+        part = block.iloc[_block_indices(len(block), days * per_day)].reset_index(drop=True)
+        n = len(part)
+        idx = pd.Series(range(n))
+        start = pd.Timestamp(YEAR, int(month), 1)
+        if daily:
+            part["date"] = (start + pd.to_timedelta(idx, unit="D")).dt.strftime("%Y-%m-%d")
+            part["day_in_month"] = idx + 1
+        else:
+            part["timestamp"] = (start + pd.to_timedelta(idx * 15, unit="min")).dt.strftime("%Y-%m-%d %H:%M:%S")
+            part["day_in_month"] = idx // 96 + 1
+        part["day_number"] = part["day_in_month"] + day_offset
+        part["month_label"] = f"{MONTH_NAMES[int(month) - 1]} {YEAR}"
+        day_offset += days
+        parts.append(part)
+    result = pd.concat(parts, ignore_index=True)
+    if "record_number" in result.columns:
+        result["record_number"] = range(1, len(result) + 1)
+    if "sequence_number" in result.columns:
+        result["sequence_number"] = range(1, len(result) + 1)
+    return result
+
+
+def _rebuild_monthly_from_daily(daily: pd.DataFrame, monthly: pd.DataFrame) -> pd.DataFrame:
+    import calendar as _cal
+
+    sums = daily.groupby("month_number").agg(
+        claimed_electricity_kwh=("claimed_main_meter_kwh", "sum"),
+        verified_electricity_kwh=("verified_reference_kwh", "sum"),
+        natural_gas_scm=("natural_gas_scm", "sum"), diesel_litres=("diesel_litres", "sum"),
+        vehicles_produced=("vehicles_produced", "sum"),
+        claimed_scope2_kgco2=("claimed_scope2_kgco2", "sum"), verified_scope2_kgco2=("verified_scope2_kgco2", "sum"),
+        scope1_total_kgco2e=("scope1_total_kgco2e", "sum"),
+        claimed_total_kgco2e=("claimed_total_kgco2e", "sum"), verified_total_kgco2e=("verified_total_kgco2e", "sum"),
+        attack_records=("attack_records", "sum"), repair_events=("repair_events", "sum"),
+    )
+    result = monthly.set_index("month_number").copy()
+    for column in sums.columns:
+        result[column] = sums[column]
+    result = result.reset_index()
+    result["month_label"] = result["month_number"].map(lambda m: f"{MONTH_NAMES[int(m) - 1]} {YEAR}")
+    result["period_start"] = result["month_number"].map(lambda m: f"{YEAR}-{int(m):02d}-01")
+    result["period_end"] = result["month_number"].map(lambda m: f"{YEAR}-{int(m):02d}-{_cal.monthrange(YEAR, int(m))[1]:02d}")
+    diff = (result["verified_total_kgco2e"] - result["claimed_total_kgco2e"]).round(6)
+    result["claim_discrepancy_kgco2e"] = diff
+    result["claim_discrepancy_percent"] = (diff.abs() / result["verified_total_kgco2e"] * 100).round(6)
+    result["verified_intensity_kgco2e_per_vehicle"] = (result["verified_total_kgco2e"] / result["vehicles_produced"]).round(6)
+    result["claim_status"] = "NOT_SUBMITTED"
+    result["verification_recommendation"] = result.apply(
+        lambda r: "RECOMMEND_APPROVAL" if r["claim_discrepancy_percent"] <= 1 else "MANUAL_REVIEW", axis=1)
+    return result[monthly.columns]
+
+
 def _scaled_columns(filename: str, columns: list[str]) -> list[str]:
     if filename in {"plant_meter_readings.csv", "shop_energy_readings.csv"}:
         return [
@@ -160,15 +236,14 @@ def _apply_claim_bias(frame: pd.DataFrame, filename: str, bias: dict) -> None:
         mask = frame["month_number"] == month
         for column in claimed_cols:
             frame.loc[mask, column] = (frame.loc[mask, column] * (1 + pct / 100.0)).round(6)
+    frame["claimed_total_kgco2e"] = (frame["claimed_scope2_kgco2"] + frame["scope1_total_kgco2e"]).round(6)
     verified = "verified_total_kgco2e"
     if filename == "monthly_carbon_claims.csv":
         diff = (frame[verified] - frame["claimed_total_kgco2e"]).round(6)
         frame["claim_discrepancy_kgco2e"] = diff
         frame["claim_discrepancy_percent"] = (diff.abs() / frame[verified] * 100).round(6)
         def rec(row):
-            if row["claim_discrepancy_percent"] <= 1.0:
-                return "APPROVAL_AFTER_PROBATION_REVIEW" if row["repair_events"] > 0 else "RECOMMEND_APPROVAL"
-            return "MANUAL_REVIEW"
+            return "RECOMMEND_APPROVAL" if row["claim_discrepancy_percent"] <= 1.0 else "MANUAL_REVIEW"
         frame["verification_recommendation"] = frame.apply(rec, axis=1)
     else:
         diff = (frame[verified] - frame["claimed_total_kgco2e"]).round(6)
@@ -248,6 +323,10 @@ def generate_company_bundles(
         filename: pd.read_csv(source_dir / filename)
         for filename in DATASET_FILES
     }
+    for filename in FIFTEEN_MIN_FILES | DAILY_FILES:
+        base_frames[filename] = _calendarize(base_frames[filename], filename)
+    base_frames["monthly_carbon_claims.csv"] = _rebuild_monthly_from_daily(
+        base_frames["daily_carbon_emissions.csv"], base_frames["monthly_carbon_claims.csv"])
     output_dir.mkdir(parents=True, exist_ok=True)
     generated = []
 
@@ -302,6 +381,7 @@ def generate_company_bundles(
         json.dumps(
             {
                 "data_origin": "SYNTHETIC_SIMULATION",
+                "schema_version": SCHEMA_VERSION,
                 "company_count": len(generated),
                 "companies": generated,
             },

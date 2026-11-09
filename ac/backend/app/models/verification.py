@@ -13,6 +13,7 @@ class VerificationRun(Base):
     company_id: Mapped[str] = mapped_column(String(80), index=True)
     claim_id: Mapped[str] = mapped_column(String(120), index=True)
     month_number: Mapped[int] = mapped_column(Integer, default=0)
+    period: Mapped[str] = mapped_column(String(7), default="")
     requested_mode: Mapped[str] = mapped_column(String(20), default="AUTO")
     execution_mode: Mapped[str] = mapped_column(String(30), default="PENDING")
     status: Mapped[str] = mapped_column(String(20), default="QUEUED", index=True)

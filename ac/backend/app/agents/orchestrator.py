@@ -22,10 +22,12 @@ _agentic_lock = threading.Lock()
 make_client: Callable[[], GroqClient] = lambda: GroqClient()  # tests may replace this
 
 ROLES = {
-    "CLAIM_VALIDATION_AGENT": "Validate the monthly carbon claim: completeness, arithmetic (scope 1 + scope 2), "
-        "size and direction of the discrepancy against verified emissions, and intensity per vehicle.",
-    "EVIDENCE_ASSESSMENT_AGENT": "Assess the supporting evidence: calibration certificate coverage of the period, maintenance "
-        "events, uploaded documents, and the completeness/health of the SCD40 sensor fleet that produced the monthly sensor dataset.",
+    "CLAIM_VALIDATION_AGENT": "Validate the operator's monthly request: declared electricity/fuel/production versus plant records, "
+        "size and direction of the emissions discrepancy against verified emissions, and whether the expected carbon credits "
+        "(credits.expected_credits_tco2e) are supported by the data (credits.supported_credits_tco2e).",
+    "EVIDENCE_ASSESSMENT_AGENT": "Assess the supporting evidence: the document checklist (electricity bill, production record, fuel bill - "
+        "list any missing_required_documents), calibration certificate coverage of the month, maintenance events, and the "
+        "completeness/health of the SCD40 sensor fleet that produced the sealed monthly sensor dataset.",
     "TRUST_AND_FRAUD_AGENT": "Assess meter trust and possible manipulation: main-meter trust trajectory, disparity against "
         "supporting meters, repair/probation state, and whether environmental sensor data corroborates or contradicts the claim.",
     "COMPLIANCE_AGENT": "Judge overall audit readiness: what blocks approval, what the human auditor must check, "
@@ -223,6 +225,7 @@ def execute_run(run_id: str) -> None:
                     "confidence_score": round(min(debate["consensus"]["confidence"], guard["confidence_score"] + 0.05), 3),
                     "primary_reason": reason, "explanation": debate["consensus"]["explanation"],
                     "required_actions": debate["consensus"]["auditor_actions"] or guard["required_actions"],
+                    "suggested_info_items": guard["suggested_info_items"],
                     "dissenting_points": debate["consensus"]["dissenting_points"], "generated_by": "GROQ_LLM+GUARD",
                 }
             else:
@@ -234,6 +237,7 @@ def execute_run(run_id: str) -> None:
                     "confidence_score": guard["confidence_score"],
                     "primary_reason": assessments[3]["summary"], "explanation": "",
                     "required_actions": guard["required_actions"], "dissenting_points": [], "generated_by": "DETERMINISTIC",
+                    "suggested_info_items": guard["suggested_info_items"],
                 }
             consensus.update(deterministic_recommendation=guard["recommendation"],
                              guard_rules_triggered=guard["rules_triggered"],
@@ -241,7 +245,7 @@ def execute_run(run_id: str) -> None:
                              verified_emissions_kgco2e=packet["claim"]["verified_total_kgco2e"])
             result = {
                 "run_id": run.run_id, "company_id": run.company_id, "claim_id": run.claim_id,
-                "month_number": run.month_number, "execution_mode": execution_mode, "llm": llm_info,
+                "period": run.period, "month_number": run.month_number, "execution_mode": execution_mode, "llm": llm_info,
                 "generated_at_utc": datetime.now(timezone.utc).isoformat(),
                 "evidence_packet": packet, "agent_assessments": assessments,
                 "debate_messages": messages, "consensus": consensus,

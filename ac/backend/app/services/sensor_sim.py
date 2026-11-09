@@ -3,30 +3,17 @@ from __future__ import annotations
 
 import zlib
 from collections import deque
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from typing import Any
 
 import numpy as np
 import pandas as pd
 
-STEP_MINUTES = 15
-STEPS_PER_DAY = 96
-PERIOD_DAYS = 30
-STEPS_PER_PERIOD = PERIOD_DAYS * STEPS_PER_DAY  # 2880
-EPOCH = datetime(2026, 1, 1, tzinfo=timezone.utc)
+from app.services import periods
+
+STEP_MINUTES = periods.STEP_MINUTES
+STEPS_PER_DAY = periods.STEPS_PER_DAY
 STUCK_RUN = 6
-
-
-def month_of(ts: datetime) -> int:
-    return int((ts - EPOCH) // timedelta(days=PERIOD_DAYS)) + 1
-
-
-def period_start(month: int) -> datetime:
-    return EPOCH + timedelta(days=PERIOD_DAYS * (month - 1))
-
-
-def period_end(month: int) -> datetime:
-    return period_start(month) + timedelta(days=PERIOD_DAYS) - timedelta(minutes=STEP_MINUTES)
 
 
 def seeded_rng(*parts: Any) -> np.random.Generator:
@@ -88,7 +75,8 @@ def generate_historical(profile: dict[str, Any], base: pd.DataFrame) -> pd.DataF
             co2[i0:i1], temp[i0:i1], hum[i0:i1] = co2[i0], temp[i0], hum[i0]
         elif kind == "DRIFT":  # ramps up, then stays offset until the end of the month
             co2[i0:i1] += np.linspace(0, fault["magnitude"], i1 - i0)
-            month_end = month_start + STEPS_PER_PERIOD
+            later = month == fault["month"] + 1
+            month_end = int(np.argmax(later)) if later.any() else n
             co2[i1:month_end] += fault["magnitude"]
             scenario[i0:month_end] = "DRIFT"
         elif kind == "SPIKE":
@@ -109,6 +97,8 @@ def generate_historical(profile: dict[str, Any], base: pd.DataFrame) -> pd.DataF
         "humidity_percent": np.clip(hum, 5, 99).round(2),
         "scenario": scenario,
     })[keep].reset_index(drop=True)
+    frame["period"] = frame["timestamp"].dt.strftime("%Y-%m")
+    frame = frame.drop(columns=["month_number"])
     frame["validation_status"] = flag_frame(frame)
     frame["device_status"] = "ONLINE"
     frame["data_origin"] = "SIMULATED_HARDWARE"
@@ -173,7 +163,7 @@ def live_reading(state: SensorLiveState, ts: datetime, baseline: LiveBaseline) -
     state.next_seq += 1
     return {
         "sensor_id": p["sensor_id"], "timestamp": ts, "sequence_number": seq,
-        "month_number": month_of(ts), "co2_ppm": co2, "temperature_c": temp,
+        "period": periods.of(ts), "co2_ppm": co2, "temperature_c": temp,
         "humidity_percent": hum, "device_status": "ONLINE",
         "data_origin": "SIMULATED_HARDWARE", "scenario": scenario,
         "validation_status": status,

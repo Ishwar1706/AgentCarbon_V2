@@ -5,9 +5,10 @@ from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 
-from app.api import admin, audit_registry, auditor, auth, claims, companies, dashboard, documents, sensors, simulation, verifications
+from app.api import (admin, audit_registry, auditor, auth, calendar_api, companies, credits_api, dashboard, documents,
+                     info_requests, monthly_requests, sensors, simulation, verifications)
 from app.core.config import PROJECT_ROOT, settings
 from app.core.database import Base, SessionLocal, engine
 from app.services.company_trust_service import get_company_trust_analysis
@@ -51,8 +52,8 @@ def health():
     return {"status": "ok", "groq_configured": settings.groq_configured, "model": settings.groq_model}
 
 
-for module in (auth, admin, companies, dashboard, sensors, simulation, claims, verifications,
-               documents, auditor, audit_registry):
+for module in (auth, admin, companies, calendar_api, dashboard, sensors, simulation, monthly_requests,
+               info_requests, verifications, documents, auditor, audit_registry, credits_api):
     app.include_router(module.router, prefix="/api/v1")
 
 # Optional single-port mode: serve the built frontend (frontend/dist) from the API.
@@ -64,6 +65,8 @@ if DIST.is_dir():
 
     @app.get("/{path:path}", include_in_schema=False)
     def spa(path: str):
+        if path == "api" or path.startswith("api/") or path.startswith("health"):
+            return JSONResponse({"detail": "Not found"}, status_code=404)
         target = (DIST / path).resolve()
         if path and target.is_file() and DIST in target.parents:
             return FileResponse(target)

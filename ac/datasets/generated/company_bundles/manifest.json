@@ -1,0 +1,72 @@
+{
+  "data_origin": "SYNTHETIC_SIMULATION",
+  "schema_version": "calendar-v2",
+  "company_count": 5,
+  "companies": [
+    {
+      "company_id": "sim-northstar-mobility",
+      "legal_name": "Northstar Mobility Works",
+      "directory": "sim-northstar-mobility",
+      "dataset_count": 12,
+      "months": [
+        1,
+        2,
+        3,
+        4,
+        5
+      ]
+    },
+    {
+      "company_id": "sim-ironwood-automotive",
+      "legal_name": "Ironwood Automotive Group",
+      "directory": "sim-ironwood-automotive",
+      "dataset_count": 12,
+      "months": [
+        1,
+        2,
+        3,
+        4,
+        5
+      ]
+    },
+    {
+      "company_id": "sim-crestline-motors",
+      "legal_name": "Crestline Motor Manufacturing",
+      "directory": "sim-crestline-motors",
+      "dataset_count": 12,
+      "months": [
+        1,
+        2,
+        3,
+        4,
+        5
+      ]
+    },
+    {
+      "company_id": "sim-redwood-vehicle-systems",
+      "legal_name": "Redwood Vehicle Systems",
+      "directory": "sim-redwood-vehicle-systems",
+      "dataset_count": 12,
+      "months": [
+        1,
+        2,
+        3,
+        4,
+        5
+      ]
+    },
+    {
+      "company_id": "sim-summit-auto-works",
+      "legal_name": "Summit Auto Works",
+      "directory": "sim-summit-auto-works",
+      "dataset_count": 12,
+      "months": [
+        1,
+        2,
+        3,
+        4,
+        5
+      ]
+    }
+  ]
+}

@@ -16,10 +16,12 @@ class User(Base):
     email: Mapped[str] = mapped_column(String(255), unique=True, index=True)
     full_name: Mapped[str] = mapped_column(String(200))
     password_hash: Mapped[str] = mapped_column(Text)
+    # PLANT_OPERATOR | AUDITOR | CREDIT_BUYER | ADMIN
     role: Mapped[str] = mapped_column(String(40), index=True)
-    company_id: Mapped[str | None] = mapped_column(
-        ForeignKey("companies.company_id"), index=True
-    )
+    company_id: Mapped[str | None] = mapped_column(ForeignKey("companies.company_id"), index=True)
+    organization: Mapped[str | None] = mapped_column(String(200))
+    # PENDING (awaiting admin) | ACTIVE | REJECTED | SUSPENDED
+    account_status: Mapped[str] = mapped_column(String(20), default="ACTIVE", index=True)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
@@ -31,6 +33,7 @@ class EvidenceDocument(Base):
     document_id: Mapped[str] = mapped_column(String(80), unique=True, index=True)
     company_id: Mapped[str] = mapped_column(String(80), index=True)
     claim_id: Mapped[str] = mapped_column(String(120), index=True)
+    info_request_id: Mapped[str | None] = mapped_column(String(60), index=True)
     document_type: Mapped[str] = mapped_column(String(80))
     original_filename: Mapped[str] = mapped_column(String(255))
     stored_filename: Mapped[str] = mapped_column(String(255))

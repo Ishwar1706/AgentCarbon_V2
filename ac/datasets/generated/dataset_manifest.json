@@ -1,11 +1,11 @@
 {
   "manifest_version": "1.0.0",
   "project": "AgentCarbon",
-  "generated_at_utc": "2026-10-23T11:56:42.522425+00:00",
+  "generated_at_utc": "2026-11-09T12:47:17.977997+00:00",
   "source_dataset": {
     "filename": "Steel_industry_data.csv",
     "repository_status": "NOT_COMMITTED",
-    "sha256": "90726c0fd007eded3064eebcb8386d0291ea9c028ea106af8d0b3702925b85ad"
+    "sha256": "9b1cee6f9cb9cd9df2b95814ca90a9a2ff15b7f5f1fba0fae3c643e82072eacc"
   },
   "generation_order": [
     "five_month_dataset_generator.py",

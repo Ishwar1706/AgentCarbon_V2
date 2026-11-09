@@ -12,8 +12,8 @@ from app.core.config import settings
 from app.core.security import hash_password
 from app.models.access_control import User
 from app.models.sensor import Sensor, SensorReading
-from app.models.workflows import AuditorApplication, Company
-from app.services import sensor_rollup
+from app.models.workflows import AuditorApplication, BuyerApplication, Company
+from app.services import periods, sensor_rollup
 from app.services.company_data import (
     COMPANY_PROFILES, ensure_company_bundles, read_company_dataset,
 )
@@ -23,9 +23,9 @@ from app.services.sensor_sim import generate_historical
 log = logging.getLogger("agentcarbon.provision")
 
 DEMO_USERS = [
-    ("admin@agentcarbon.demo", "Platform Admin", "ADMIN", None),
-    ("auditor@agentcarbon.demo", "Verified Auditor", "AUDITOR", None),
-    ("viewer@agentcarbon.demo", "Regulator Viewer", "REGULATOR_VIEWER", None),
+    ("admin@agentcarbon.demo", "Platform Admin", "ADMIN", None, "AgentCarbon"),
+    ("auditor@agentcarbon.demo", "Verified Auditor", "AUDITOR", None, "Independent Carbon Assurance (demo)"),
+    ("buyer@agentcarbon.demo", "Credit Buyer", "CREDIT_BUYER", None, "GreenFuture Offsets (demo buyer)"),
 ]
 OPERATOR_EMAILS = {
     "sim-northstar-mobility": "northstar@agentcarbon.demo",
@@ -71,35 +71,114 @@ def provision_companies_and_sensors(db: Session) -> None:
             base = read_company_dataset(company_id, "historical_scd40_readings.csv")
             for p in profiles:
                 _insert_frame(db, p["sensor_id"], generate_historical(p, base))
-            for month in range(1, 6):
-                sensor_rollup.seal_period(db, company_id, month)
+            for period in periods.DATASET_PERIODS:
+                sensor_rollup.seal_period(db, company_id, period)
             log.info("Simulated 5 months of sensor data for %s (%d sensors)", company_id, len(profiles))
 
 
 def provision_users(db: Session) -> None:
-    def ensure(email: str, name: str, role: str, company_id: str | None) -> User:
+    def ensure(email: str, name: str, role: str, company_id: str | None, org: str | None) -> User:
         user = db.scalar(select(User).where(User.email == email))
         if user is None:
-            user = User(email=email, full_name=name, role=role, company_id=company_id,
-                        password_hash=hash_password(settings.demo_password))
+            user = User(email=email, full_name=name, role=role, company_id=company_id, organization=org,
+                        account_status="ACTIVE", password_hash=hash_password(settings.demo_password))
             db.add(user)
             db.commit()
         return user
 
-    for email, name, role, company_id in DEMO_USERS:
-        user = ensure(email, name, role, company_id)
+    for email, name, role, company_id, org in DEMO_USERS:
+        user = ensure(email, name, role, company_id, org)
         if role == "AUDITOR" and not db.scalar(
                 select(AuditorApplication).where(AuditorApplication.applicant_user_id == user.id)):
-            db.add(AuditorApplication(
-                application_id="AUD-DEMO-001", applicant_user_id=user.id,
-                organization="Independent Carbon Assurance (demo)",
-                credentials="Demo verified auditor", status="APPROVED"))
+            db.add(AuditorApplication(application_id="AUD-DEMO-001", applicant_user_id=user.id,
+                                      organization=org, credentials="Demo verified auditor", status="APPROVED"))
+            db.commit()
+        if role == "CREDIT_BUYER" and not db.scalar(
+                select(BuyerApplication).where(BuyerApplication.applicant_user_id == user.id)):
+            db.add(BuyerApplication(application_id="BUY-DEMO-001", applicant_user_id=user.id, organization=org,
+                                    purpose="Demo credit buyer", status="APPROVED"))
             db.commit()
     for company_id, email in OPERATOR_EMAILS.items():
-        ensure(email, f"{COMPANY_PROFILES[company_id]['legal_name']} Operator", "PLANT_OPERATOR", company_id)
+        name = COMPANY_PROFILES[company_id]["legal_name"]
+        ensure(email, f"{name} Operator", "PLANT_OPERATOR", company_id, name)
+
+
+_PDF = (b"%PDF-1.4\n1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\n2 0 obj<</Type/Pages/Kids[3 0 R]/Count 1>>endobj\n"
+        b"3 0 obj<</Type/Page/Parent 2 0 R/MediaBox[0 0 300 100]>>endobj\ntrailer<</Root 1 0 R>>\n%%EOF\n# {label}\n")
+
+
+def seed_sample_credits(db: Session) -> None:
+    """Demo only: finish two clean months end-to-end so the credit buyer has registered credits to inspect."""
+    import hashlib
+    import json
+    import uuid
+
+    from app.agents.orchestrator import execute_run
+    from app.models.access_control import AuditorDecision, EvidenceDocument
+    from app.models.verification import VerificationRun
+    from app.models.workflows import MonthlyRequest
+    from app.services import credits, registry
+    from app.services.company_data import get_claim
+
+    auditor = db.scalar(select(User).where(User.email == "auditor@agentcarbon.demo"))
+    if auditor is None:
+        log.warning("Sample credits were not seeded: demo auditor account is missing.")
+        return
+    for company_id in ("sim-northstar-mobility", "sim-ironwood-automotive"):
+        period = "2026-01"
+        claim = get_claim(company_id, periods.claim_id(company_id, period))
+        if claim is None:
+            log.warning("Sample credit was not seeded for %s: %s data is missing.", company_id, period)
+            continue
+        if db.scalar(select(MonthlyRequest).where(MonthlyRequest.claim_id == claim["claim_id"])):
+            log.info("Sample credit seed skipped for %s: a monthly request already exists.", company_id)
+            continue
+        operator = db.scalar(select(User).where(User.company_id == company_id, User.role == "PLANT_OPERATOR"))
+        pre = credits.prefill(company_id, claim)
+        db.add(MonthlyRequest(
+            request_id=f"MR-{uuid.uuid4().hex[:10].upper()}", company_id=company_id, period=period,
+            claim_id=claim["claim_id"], status="SUBMITTED", expected_credits_tco2e=pre["expected_credits_tco2e"],
+            declared_electricity_kwh=pre["electricity_kwh"], declared_production_units=pre["production_units"],
+            declared_natural_gas_scm=pre["natural_gas_scm"], declared_diesel_litres=pre["diesel_litres"],
+            notes="Sample month (demo data).", created_by_user_id=operator.id if operator else None,
+            submitted_at=datetime.now(timezone.utc)))
+        for slot in ("ELECTRICITY_BILL", "PRODUCTION_RECORD", "FUEL_BILL"):
+            content = _PDF.replace(b"{label}", f"{slot} {claim['claim_id']} synthetic".encode())
+            stored = f"{uuid.uuid4().hex}.pdf"
+            (settings.path("upload_dir") / stored).write_bytes(content)
+            db.add(EvidenceDocument(
+                document_id=f"DOC-{uuid.uuid4().hex[:12].upper()}", company_id=company_id, claim_id=claim["claim_id"],
+                document_type=slot, original_filename=f"{slot.lower()}_{period}.pdf", stored_filename=stored,
+                content_type="application/pdf", size_bytes=len(content), sha256_hash=hashlib.sha256(content).hexdigest(),
+                data_label="SYNTHETIC_DEMO", verification_status="VERIFIED",
+                uploaded_by_user_id=operator.id if operator else auditor.id, verified_by_user_id=auditor.id,
+                verified_at=datetime.now(timezone.utc)))
+        run = VerificationRun(run_id=f"RUN-{uuid.uuid4().hex[:12].upper()}", company_id=company_id,
+                              claim_id=claim["claim_id"], period=period, month_number=1,
+                              requested_mode="DETERMINISTIC", created_by_user_id=auditor.id)
+        db.add(run)
+        db.commit()
+        execute_run(run.run_id)
+        db.expire_all()
+        run = db.get(VerificationRun, run.run_id)
+        if run.status != "COMPLETED":
+            log.warning("sample credit run failed for %s: %s", company_id, run.error)
+            continue
+        decision = AuditorDecision(
+            decision_id=f"DEC-{uuid.uuid4().hex[:12].upper()}", company_id=company_id, claim_id=claim["claim_id"],
+            verification_run_id=run.run_id, decision="APPROVE",
+            comments="Sample approval: figures match the verified data and all evidence is on file.",
+            auditor_user_id=auditor.id)
+        db.add(decision)
+        db.get(MonthlyRequest, db.scalar(select(MonthlyRequest.request_id).where(
+            MonthlyRequest.claim_id == claim["claim_id"]))).status = "APPROVED"
+        db.commit()
+        registry.register(db, run, decision, auditor)
+        log.info("Seeded registered Jan 2026 sample credit for %s.", company_id)
 
 
 def provision_all(db: Session) -> None:
     provision_companies_and_sensors(db)
     if settings.demo_mode:
         provision_users(db)
+        seed_sample_credits(db)

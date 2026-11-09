@@ -1,20 +1,21 @@
-import React, { createContext, useContext, useEffect, useState, useCallback } from "react";
+import React, { createContext, useCallback, useContext, useEffect, useState } from "react";
 import { api, setToken, setUnauthorizedHandler } from "../api/client.js";
+import { DEFAULT_PERIOD } from "../../lib/periods.js";
 
 const Ctx = createContext(null);
 export const useAuth = () => useContext(Ctx);
+const DATA_ROLES = ["PLANT_OPERATOR", "AUDITOR"];
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [ready, setReady] = useState(false);
   const [companies, setCompanies] = useState([]);
   const [companyId, setCompanyId] = useState(localStorage.getItem("ac_company") || "");
+  const [period, setPeriodState] = useState(localStorage.getItem("ac_period") || DEFAULT_PERIOD);
+  const [cal, setCal] = useState(null);
 
-  const logout = useCallback(() => {
-    setToken("");
-    setUser(null);
-    setCompanies([]);
-  }, []);
+  const setPeriod = (p) => { setPeriodState(p); localStorage.setItem("ac_period", p); };
+  const logout = useCallback(() => { setToken(""); setUser(null); setCompanies([]); setCal(null); }, []);
 
   useEffect(() => {
     setUnauthorizedHandler(logout);
@@ -22,7 +23,7 @@ export function AuthProvider({ children }) {
   }, [logout]);
 
   useEffect(() => {
-    if (!user) return;
+    if (!user || !DATA_ROLES.includes(user.role)) return;
     api.get("/companies").then((list) => {
       setCompanies(list);
       const own = user.role === "PLANT_OPERATOR" ? user.company_id : null;
@@ -32,14 +33,23 @@ export function AuthProvider({ children }) {
 
   useEffect(() => { if (companyId) localStorage.setItem("ac_company", companyId); }, [companyId]);
 
+  const year = +period.slice(0, 4);
+  const refreshCalendar = useCallback(() => {
+    if (!user || !companyId || !DATA_ROLES.includes(user.role)) return;
+    api.get("/calendar", { company_id: companyId, year }).then(setCal).catch(() => setCal(null));
+  }, [user, companyId, year]);
+  useEffect(() => { refreshCalendar(); }, [refreshCalendar]);
+
   const login = async (email, password) => {
     const data = await api.login(email, password);
     setToken(data.access_token);
     setUser(data.user);
   };
   const company = companies.find((c) => c.company_id === companyId);
+  const monthInfo = cal?.months?.find((m) => m.period === period) || null;
   return (
-    <Ctx.Provider value={{ user, ready, login, logout, companies, companyId, setCompanyId, company }}>
+    <Ctx.Provider value={{ user, ready, login, logout, companies, companyId, setCompanyId, company,
+                           period, setPeriod, monthInfo, refreshCalendar }}>
       {children}
     </Ctx.Provider>
   );

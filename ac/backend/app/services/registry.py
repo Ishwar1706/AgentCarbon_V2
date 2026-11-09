@@ -35,6 +35,7 @@ def build_report(db: Session, run: VerificationRun, decision: AuditorDecision | 
         "report_version": "2.0", "company_id": run.company_id, "claim_id": run.claim_id,
         "run_id": run.run_id, "execution_mode": run.execution_mode,
         "claim": result["evidence_packet"]["claim"], "consensus": result["consensus"],
+        "credits": result["evidence_packet"]["credits"], "declared": result["evidence_packet"]["declared"],
         "agent_assessments": result["agent_assessments"], "debate_messages": result["debate_messages"],
         "evidence_summary": {
             "sensors": {k: v for k, v in result["evidence_packet"]["sensors"].items() if k != "sensors"},
@@ -59,9 +60,11 @@ def report_to_html(report: dict) -> str:
     return f"""<!doctype html><html><head><meta charset="utf-8"><title>{esc(report['claim_id'])}</title>
 <style>body{{font-family:Arial,sans-serif;max-width:900px;margin:30px auto;color:#222}}table{{border-collapse:collapse;width:100%}}
 td,th{{border:1px solid #ccc;padding:6px;text-align:left;font-size:14px}}code{{word-break:break-all}}</style></head><body>
-<h1>AgentCarbon Verification Report</h1><p>{esc(report['claim_id'])} — {esc(report['company_id'])}</p>
+<h1>AgentCarbon Verification Report</h1><p>{esc(report['claim']['label'])} — {esc(report['company_id'])} — {esc(report['claim_id'])}</p>
 <h2>Claim</h2><p>Claimed {esc(c['claimed_total_kgco2e'])} kgCO2e vs verified {esc(c['verified_total_kgco2e'])} kgCO2e
 ({esc(c['discrepancy_percent'])}% {esc(c['direction'])}).</p>
+<h2>Credits</h2><p>Expected {esc(report['credits']['expected_credits_tco2e'])} tCO2e · supported by data {esc(report['credits']['supported_credits_tco2e'])} tCO2e ·
+<b>approvable {esc(report['credits']['approvable_credits_tco2e'])} tCO2e</b></p>
 <h2>Recommendation</h2><p><b>{esc(cons['final_recommendation'])}</b> (confidence {esc(cons['confidence_score'])}, mode {esc(report['execution_mode'])})</p>
 <p>{esc(cons['primary_reason'])}</p>
 <h2>Agents</h2><table><tr><th>Agent</th><th>Status</th><th>Risk</th><th>Summary</th></tr>{rows}</table>

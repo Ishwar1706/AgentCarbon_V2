@@ -1,0 +1,108 @@
+AGENTCARBON - 10-MINUTE CONTEST DEMONSTRATION SCRIPT
+====================================================
+
+Target runtime: 10:00
+Format: screen recording with voice-over
+Application: http://localhost:8000
+
+RECORDING PREP (NOT SPOKEN)
+- Start the app before recording and wait for "Application startup complete".
+- Aim for roughly 135-145 spoken words per minute; perform routine screen changes during voice-over and keep transition pauses short.
+- Use the demo accounts listed below. Password: Demo@12345.
+- Use Northstar Mobility for the operator and auditor walkthrough. Select February 2026 for the evidence-review story.
+- Keep the source data disclosure visible or say it clearly: company activity, claims, meters, and sensor readings in this prototype are synthetic simulations.
+- The first startup can take about 20-30 seconds. Do not include startup waiting in the recording.
+- If a Groq AI run is slow or rate-limited, use Rule engine mode for the main workflow. The mode selector and live progress are still shown; never present a fallback as a completed AI debate.
+- This is a prototype demonstration, not a claim that credits are issued or verified by a public registry.
+
+0:00-0:45 | OPENING: THE PROBLEM
+[SCREEN: Start on the AgentCarbon login page, then cut to the product overview after signing in.]
+
+NARRATION:
+"A carbon claim can look precise while still being difficult to trust. An auditor may need to compare reported electricity and fuel use with meter readings, production records, sensor health, calibration evidence, and bills. Those signals can live in different systems, use different time periods, and tell different stories.
+
+AgentCarbon is a prototype for bringing those signals into one monthly review. It gathers the available evidence, checks consistency, highlights missing information, and prepares a recommendation for a human auditor. The goal is not to automate accountability away; it is to make the reasoning and the evidence easier to inspect. Every company, claim, meter reading, and sensor reading in this recording is simulated demonstration data."
+
+0:45-1:35 | FOUR ROLES, ONE CONTROLLED WORKFLOW
+[SCREEN: Briefly show the login page’s demo accounts. Sign in as northstar@agentcarbon.demo.]
+
+NARRATION:
+"The prototype has four distinct roles, each with a separate view of the workflow. The plant operator sees only their own company and prepares monthly figures and evidence. A verified auditor can compare companies and review claims. A credit buyer sees only lots that have been approved by an auditor and registered. The administrator approves registrations and maintains accounts, but cannot open company or credit data.
+
+That separation matters: the person submitting evidence is not the person making the final audit decision, and the buyer does not see unapproved claims. I’ll follow Northstar’s February 2026 month from the operator’s data to the auditor’s review and then to the buyer’s registry check."
+
+1:35-2:40 | OPERATOR: SENSOR EVIDENCE
+[SCREEN: Open Sensors & Monthly Data. Point to the sensor fleet, monthly rollups, health indicators, and period selector.]
+
+NARRATION:
+"Here the operator sees Northstar’s simulated sensor fleet and its monthly readings. Each sensor contributes timestamped CO2, temperature, and humidity readings at fifteen-minute intervals. The monthly rollup summarizes how many readings arrived, how complete the period is, which values were flagged, and the health and trust status of each sensor.
+
+The operator can move from the summary into a sensor’s readings rather than treating the monthly score as a black box. When a month is sealed, AgentCarbon records a SHA-256 hash for the summary. That gives the review a stable reference to the sensor snapshot used for that period; it does not prove that the original physical sensor was truthful.
+
+This context matters because a carbon claim is not only a number on a form. An auditor can compare the declared activity with the quality and coverage of the monitoring data. In this prototype the records and planted faults are simulated; a real deployment would require trusted devices, secure ingestion, and operational data governance."
+
+2:40-3:25 | METER TRUST
+[SCREEN: Open Meter Trust. Show the selected month and the comparison between main and supporting meter readings.]
+
+NARRATION:
+"AgentCarbon also compares four electricity-meter streams: the main meter and three supporting references. The trust engine looks for disagreement over time. If the main meter starts to diverge, its contribution to the fused estimate can be reduced, while the change in trust and the supporting readings remain visible for review.
+
+This is a way to make a discrepancy actionable, not a way to declare fraud from a chart. The auditor can consider whether the meter was calibrated for the whole period, whether maintenance took place, and whether the operator’s reported electricity is consistent with the plant records."
+
+3:25-4:20 | OPERATOR: MONTHLY REQUEST
+[SCREEN: Open the month picker, choose February 2026, then open Monthly Request. Show the prefilled figures and evidence checklist. Save the draft, then submit. Do not upload documents yet.]
+
+NARRATION:
+"The monthly request brings the operator’s expected credits, electricity use, production, natural gas, diesel, and notes into one period-specific form. The initial values are prefilled from the plant dataset so the operator has a starting point, not an unexplained blank form. The operator can compare those values with their own records, edit them, and save a draft before submitting.
+
+I’m submitting February without attaching bills. That is deliberate: it gives the auditor a concrete evidence gap to review. The checklist tracks required evidence such as the electricity bill, production record, and fuel bill. Submission records the operator’s figures and makes the month ready for the auditor’s formal decision workflow."
+
+4:20-6:15 | AUDITOR: RUN THE REVIEW
+[SCREEN: Sign out. Sign in as auditor@agentcarbon.demo. Select Northstar and February 2026. Open Review & Agents. Select Auto or Rule engine. Click Run verification. Show the progress log and final recommendation.]
+
+NARRATION:
+"Now I’m switching to the auditor view. The auditor can select a company and use the calendar to open any month that has data. The review does not depend on the operator submitting first: if there is no request, the evidence packet labels the declared figures as DATASET_PREFILL, making clear that the agents are using the plant’s own dataset rather than an operator-submitted form.
+
+For this submitted February request, I’ll run the verification with the evidence currently on file. The system builds a company-specific packet containing the monthly claim, reported and verified totals, meter-trust analysis, sensor rollup and seal, calibration coverage, maintenance events, and document checklist. That packet is the factual context for the run.
+
+The Rule engine option provides a deterministic baseline. With AI agents enabled, four specialists assess different parts of the packet: claim consistency, evidence quality, meter trust and possible manipulation, and audit readiness. They produce independent assessments, exchange challenges and responses, then a consensus agent proposes an overall recommendation. The live progress log and run history let the auditor follow a long-running job and return to it after changing months.
+
+Finally, a deterministic safety guard compares the AI proposal with the rules. It can make the recommendation stricter when evidence requires it, but it cannot make it more lenient. Here, missing bills lead to a manual-review recommendation. The agents do not approve credits: the human auditor remains responsible for the final decision."
+
+6:15-7:15 | REQUEST THE MISSING EVIDENCE
+[SCREEN: Show suggested information-request items. Send the request. Sign out and sign in as northstar@agentcarbon.demo. Open Auditor Requests.]
+
+NARRATION:
+"The auditor can turn the identified gaps into an information request for the operator. Suggested items come from the review, and the auditor can edit the request before sending it. The operator sees it in the Auditor Requests inbox, with the month, requested documents, and questions together.
+
+This closes the evidence loop in the same workspace. A missing bill is not silently treated as a pass or an automatic rejection: the gap is explicit, assigned to the operator, and available for a second review when a response arrives."
+
+7:15-8:15 | OPERATOR REPLY, AUDITOR DECISION
+[SCREEN: Upload the requested sample PDF files and send the reply. Switch back to auditor. Verify the uploaded documents, rerun the review, and record a decision with a short comment.]
+
+NARRATION:
+"The operator uploads the requested files against the open information request and sends a reply. The system records which items were provided and returns the request to the auditor for follow-up. The auditor can inspect each uploaded document, verify it, or reject it with a reason, then rerun the analysis using the updated evidence packet.
+
+When the auditor is satisfied, they record a decision and comments. The decision is separate from the AI recommendation: even a recommendation to approve is not itself an approval. The application links the human decision to the completed run and the evidence for that claim, so a later reader can see what was reviewed and who made the decision."
+
+8:15-9:15 | AUDIT REGISTRY
+[SCREEN: Open Audit Registry. Register the decided month. Verify the record and open the report.]
+
+NARRATION:
+"The finalized review can now be registered. AgentCarbon creates a record from the completed verification and auditor decision, including hashes for the evidence and report snapshot. Each registry record links to the previous record in a hash chain. The auditor can run the verification check and open the generated HTML report or download its structured JSON.
+
+If the stored record or an earlier link is changed, the integrity check can detect that the chain no longer matches. This is a local, tamper-evident registry in the prototype, not a public blockchain, not a carbon-credit certification body, and not proof that simulated reductions happened in the physical world. It demonstrates how the review record can be linked and checked after a decision."
+
+9:15-9:45 | CREDIT BUYER
+[SCREEN: Sign in as buyer@agentcarbon.demo. Show the available approved lots, click Verify, and open the HTML report or JSON download.]
+
+NARRATION:
+"The buyer role sees only lots with both an APPROVE decision and a registry entry. The list shows the company, month, approved amount, the amount supported by the data, and the registry reference. The buyer can verify the record, open the HTML report, or download JSON for further review. A rejected decision or an unregistered claim does not appear as an available lot. This makes the buyer’s view intentionally narrower than the auditor’s: it is a view of finalized, registered outcomes, not a place to review draft claims."
+
+9:45-10:00 | CLOSE
+[SCREEN: Return to the credits list or product overview. Hold the final screen for two seconds.]
+
+NARRATION:
+"AgentCarbon connects simulated plant evidence to a structured review workflow: monitor, compare, assess, request evidence, make a human decision, and verify the resulting record. Its value in this prototype is the connection between those steps and the visibility of the evidence behind them. The data is synthetic, the registry is local, and the human auditor remains the decision-maker. Thank you."
+
+END

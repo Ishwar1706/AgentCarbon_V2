@@ -20,10 +20,7 @@ TYPES = {  # extension -> (content types, magic check)
     ".csv": ({"text/csv", "text/plain", "application/vnd.ms-excel"}, lambda b: _utf8(b)),
     ".json": ({"application/json", "text/plain"}, lambda b: _json(b)),
 }
-DOCUMENT_TYPES = {
-    "CALIBRATION_CERTIFICATE", "MAINTENANCE_RECORD", "UTILITY_BILL",
-    "METER_PHOTO", "REPAIR_REPORT", "OTHER",
-}
+from app.services.checklist import DOCUMENT_TYPES, LABELS  # noqa: E402
 DATA_LABELS = {"USER_UPLOADED", "SYNTHETIC_DEMO"}
 
 
@@ -68,3 +65,11 @@ def store_upload(file: UploadFile, document_type: str, data_label: str):
         "content_type": file.content_type, "size_bytes": len(content),
         "sha256_hash": hashlib.sha256(content).hexdigest(),
     }
+
+
+def document_view(d) -> dict:
+    return {"document_id": d.document_id, "claim_id": d.claim_id, "info_request_id": d.info_request_id,
+            "document_type": d.document_type, "document_label": LABELS.get(d.document_type, d.document_type),
+            "original_filename": d.original_filename, "content_type": d.content_type, "size_bytes": d.size_bytes,
+            "sha256_hash": d.sha256_hash, "data_label": d.data_label, "verification_status": d.verification_status,
+            "auditor_note": d.auditor_note, "uploaded_at": d.uploaded_at.isoformat()}

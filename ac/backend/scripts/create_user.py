@@ -1,6 +1,6 @@
 """Create a user (use when DEMO_MODE=false).
 Usage: python backend/scripts/create_user.py EMAIL "Full Name" ROLE [COMPANY_ID]
-ROLE = ADMIN | AUDITOR | REGULATOR_VIEWER | PLANT_OPERATOR   (the password is prompted)"""
+ROLE = ADMIN | AUDITOR | CREDIT_BUYER | PLANT_OPERATOR   (the password is prompted)"""
 import getpass
 import sys
 from pathlib import Path
@@ -18,6 +18,8 @@ if len(sys.argv) < 4:
     sys.exit(__doc__)
 email, name, role = sys.argv[1].lower(), sys.argv[2], sys.argv[3].upper()
 company = sys.argv[4] if len(sys.argv) > 4 else None
+if role not in {"ADMIN", "AUDITOR", "CREDIT_BUYER", "PLANT_OPERATOR"}:
+    sys.exit("ROLE must be ADMIN, AUDITOR, CREDIT_BUYER or PLANT_OPERATOR.")
 password = getpass.getpass("Password (min 10 chars): ")
 if len(password) < 10:
     sys.exit("Password too short.")

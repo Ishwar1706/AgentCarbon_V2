@@ -7,7 +7,7 @@ from app.services.company_access import ALL_VIEWERS, Ctx, company_context
 from app.services.live_engine import engine
 
 router = APIRouter(prefix="/simulation", tags=["simulation"])
-controller = company_context("PLANT_OPERATOR", "ADMIN")
+controller = company_context("PLANT_OPERATOR")
 
 
 class StartBody(BaseModel):

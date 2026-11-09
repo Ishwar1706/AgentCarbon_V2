@@ -51,7 +51,15 @@ Wait ~20–30 seconds on the **first** start. It is simulating five months of se
 **http://localhost:8000**
 
 To stop: press `Ctrl + C`. Your data is kept in `data/agentcarbon.db`.
-To start from scratch: stop the app, delete the `data/` folder contents, start again.
+After changing backend files, stop and restart `python run.py`. After changing frontend source, run `cd frontend && npm run build`, then restart the app.
+To start from scratch, stop the app and remove the database and generated company bundles; keep the source dataset and generated base CSVs:
+
+```bash
+rm -f data/agentcarbon.db data/agentcarbon.db-shm data/agentcarbon.db-wal
+rm -rf datasets/generated/company_bundles
+find uploads reports -mindepth 1 -maxdepth 1 -exec rm -rf -- {} +
+python run.py
+```
 
 ## 5. Demo accounts
 
@@ -60,12 +68,12 @@ All demo accounts use the password **`Demo@12345`** (change it with `DEMO_PASSWO
 | Account | Role | What it can do |
 |---|---|---|
 | `auditor@agentcarbon.demo` | Auditor | Run AI verification, record decisions, verify documents, register in the audit registry |
+| `buyer@agentcarbon.demo` | Credit buyer | View and verify auditor-approved, registry-registered credits |
 | `northstar@agentcarbon.demo` | Operator (5 sensors) | Control the live sensor simulator, submit claims, upload evidence |
 | `ironwood@agentcarbon.demo` | Operator (4 sensors) | same, for Ironwood Automotive |
 | `crestline@agentcarbon.demo` | Operator (3 sensors) | same, for Crestline Motors |
 | `redwood@agentcarbon.demo` | Operator (6 sensors) | same, for Redwood Vehicle Systems |
 | `summit@agentcarbon.demo` | Operator (8 sensors) | same, for Summit Auto Works |
-| `viewer@agentcarbon.demo` | Regulator (read-only) | Look at everything, change nothing |
 | `admin@agentcarbon.demo` | Admin | Approve new companies and auditors |
 
 ## 6. Suggested demo walk-through (about 8 minutes)
@@ -73,10 +81,10 @@ All demo accounts use the password **`Demo@12345`** (change it with `DEMO_PASSWO
 1. **Sign in as `northstar@agentcarbon.demo`** → *Sensors & Monthly Data*.
    You see 5 sensors, 5 sealed months of readings, per-sensor health, charts, raw readings and a CSV export.
 2. In **Live sensor simulator**: click **Start live feed**. Watch the *Live ticker* fill and *Month 6* progress grow. Inject a fault (e.g. `STUCK` on a sensor) and click **+1 day**; the sensor becomes flagged. Click **Complete & seal month 6** — the month becomes a complete, hash-sealed monthly dataset.
-3. *Claims* → **Submit** a claim for verification.
+3. *Monthly Request* → save a draft and submit the month when ready. An auditor can run agents on any month with data, even before submission; without a submitted request, agents use the plant's dataset figures. Decisions, information requests and registry registration still require submission.
 4. **Sign out, sign in as `auditor@agentcarbon.demo`**, pick a company at the top (each has a different number of sensors and a different story).
-5. *Agent Verification* → choose a claim → **Run verification**. Watch the live progress log while the four agents assess, debate and a consensus agent decides. Read the assessments, the debate transcript and the evidence packet.
-6. Record an **Auditor decision**, then *Audit Registry* → **Register**, then **Verify**. Open the HTML report.
+5. *Review & Agents* → choose any data month → **Run verification**. Watch the live progress log while the four agents assess, debate and a consensus agent decides. Read the assessments, the debate transcript and the evidence packet.
+6. After the operator submits, record an **Auditor decision**, then *Audit Registry* → **Register**, then **Verify**. Open the HTML report.
 
 Try Month 4 (major under-reporting) vs Month 1 (clean), and Crestline Motors months 4–5 (calibration certificate expired → "additional evidence required").
 
@@ -115,7 +123,7 @@ python -m pytest
 | Top bar says "RULES ONLY" | `GROQ_API_KEY` is empty/misspelled in `.env`; restart after editing |
 | Run ends as `DETERMINISTIC_FALLBACK` | Open the run: the progress log shows why (wrong key, no internet, rate limit) |
 | Blank page after code changes | `cd frontend && npm run build` |
-| Want a clean slate | Stop the app, empty the `data/`, `uploads/` and `reports/` folders |
+| Want a clean slate | Stop the app and use the database/company-bundle reset commands in section 4; preserve `datasets/source/` and `datasets/generated/*.csv` |
 
 ## 11. Before using this for anything real
 

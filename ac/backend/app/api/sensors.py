@@ -18,7 +18,8 @@ from app.core.database import get_db
 from app.models.sensor import Sensor, SensorReading
 from app.services import sensor_rollup
 from app.services.company_access import ALL_VIEWERS, Ctx, company_context
-from app.services.sensor_sim import flag_single, month_of
+from app.services import periods
+from app.services.sensor_sim import flag_single
 from collections import deque
 
 router = APIRouter(tags=["sensors"])
@@ -34,14 +35,14 @@ def _own_sensor(db: Session, ctx: Ctx, sensor_id: str) -> Sensor:
 
 def _row(r: SensorReading) -> dict:
     return {"sensor_id": r.sensor_id, "timestamp": r.timestamp.isoformat(), "sequence_number": r.sequence_number,
-            "month_number": r.month_number, "co2_ppm": r.co2_ppm, "temperature_c": r.temperature_c,
+            "period": r.period, "co2_ppm": r.co2_ppm, "temperature_c": r.temperature_c,
             "humidity_percent": r.humidity_percent, "device_status": r.device_status,
             "scenario": r.scenario, "validation_status": r.validation_status}
 
 
 @router.get("/sensors")
 def list_sensors(ctx: Ctx = Depends(viewer), db: Session = Depends(get_db)):
-    months = sensor_rollup.period_numbers(db, ctx.company_id)
+    months = sensor_rollup.period_list(db, ctx.company_id)
     latest_summary = sensor_rollup.get_period_summary(db, ctx.company_id, months[-1]) if months else None
     health = {s["sensor_id"]: s for s in (latest_summary or {}).get("sensors", [])}
     out = []
@@ -57,6 +58,7 @@ def list_sensors(ctx: Ctx = Depends(viewer), db: Session = Depends(get_db)):
             "failure_confidence": h.get("failure_confidence"), "failure_reasons": h.get("failure_reasons", []),
             "total_readings": total, "latest": _row(last) if last else None,
             "health_period": months[-1] if months else None,
+            "health_label": periods.label(months[-1]) if months else None,
         })
     return out
 
@@ -75,47 +77,49 @@ def monthly_rollup(ctx: Ctx = Depends(viewer), db: Session = Depends(get_db)):
 
 
 @router.get("/sensors/series")
-def series(month_number: int = Query(ge=1, le=60), points: int = Query(default=240, ge=20, le=800),
+def series(period: str = Query(...), points: int = Query(default=240, ge=20, le=800),
            ctx: Ctx = Depends(viewer), db: Session = Depends(get_db)):
-    frame = sensor_rollup.load_period_frame(db, ctx.company_id, month_number)
+    periods.valid(period)
+    frame = sensor_rollup.load_period_frame(db, ctx.company_id, period)
     if frame.empty:
-        return {"month_number": month_number, "timestamps": [], "series": {}}
+        return {"period": period, "timestamps": [], "series": {}}
     frame["bucket"] = pd.qcut(frame["timestamp"].rank(method="first"), q=min(points, len(frame)), labels=False, duplicates="drop")
     stamps = frame.groupby("bucket")["timestamp"].first().dt.strftime("%Y-%m-%d %H:%M").tolist()
     pivot = frame.groupby(["bucket", "sensor_id"])["co2_ppm"].mean().round(1).unstack()
-    return {"month_number": month_number, "timestamps": stamps,
+    return {"period": period, "timestamps": stamps,
             "series": {c: [None if pd.isna(v) else float(v) for v in pivot[c]] for c in pivot.columns}}
 
 
 @router.get("/sensors/export.csv")
-def export_csv(month_number: int = Query(ge=1, le=60), ctx: Ctx = Depends(viewer), db: Session = Depends(get_db)):
+def export_csv(period: str = Query(...), ctx: Ctx = Depends(viewer), db: Session = Depends(get_db)):
     def generate():
         buffer = io.StringIO()
         writer = csv.writer(buffer)
-        writer.writerow(["sensor_id", "timestamp", "sequence_number", "month_number", "co2_ppm",
+        writer.writerow(["sensor_id", "timestamp", "sequence_number", "period", "co2_ppm",
                          "temperature_c", "humidity_percent", "validation_status", "scenario"])
         yield buffer.getvalue()
         result = db.execute(select(SensorReading).join(Sensor, Sensor.sensor_id == SensorReading.sensor_id)
-                            .where(Sensor.company_id == ctx.company_id, SensorReading.month_number == month_number)
+                            .where(Sensor.company_id == ctx.company_id, SensorReading.period == periods.valid(period))
                             .order_by(SensorReading.sensor_id, SensorReading.sequence_number).execution_options(yield_per=2000))
         for r in result.scalars():
             buffer.seek(0); buffer.truncate()
-            writer.writerow([r.sensor_id, r.timestamp.isoformat(), r.sequence_number, r.month_number,
+            writer.writerow([r.sensor_id, r.timestamp.isoformat(), r.sequence_number, r.period,
                              r.co2_ppm, r.temperature_c, r.humidity_percent, r.validation_status, r.scenario])
             yield buffer.getvalue()
     return StreamingResponse(generate(), media_type="text/csv", headers={
-        "Content-Disposition": f'attachment; filename="{ctx.company_id}-month-{month_number}-sensor-readings.csv"'})
+        "Content-Disposition": f'attachment; filename="{ctx.company_id}-{period}-sensor-readings.csv"'})
 
 
 @router.get("/sensors/{sensor_id}/readings")
-def sensor_readings(sensor_id: str, month_number: int | None = Query(default=None, ge=1, le=60),
+def sensor_readings(sensor_id: str, period: str | None = Query(default=None),
                     only_flagged: bool = False, limit: int = Query(default=50, ge=1, le=500),
                     offset: int = Query(default=0, ge=0), ctx: Ctx = Depends(viewer), db: Session = Depends(get_db)):
     _own_sensor(db, ctx, sensor_id)
     query = select(SensorReading).where(SensorReading.sensor_id == sensor_id)
     count = select(func.count(SensorReading.id)).where(SensorReading.sensor_id == sensor_id)
-    if month_number:
-        query, count = query.where(SensorReading.month_number == month_number), count.where(SensorReading.month_number == month_number)
+    if period:
+        periods.valid(period)
+        query, count = query.where(SensorReading.period == period), count.where(SensorReading.period == period)
     if only_flagged:
         query, count = (query.where(SensorReading.validation_status != "VALID"),
                         count.where(SensorReading.validation_status != "VALID"))
@@ -130,7 +134,7 @@ class NewSensor(BaseModel):
 
 
 @router.post("/sensors", status_code=201)
-def register_sensor(body: NewSensor, ctx: Ctx = Depends(company_context("PLANT_OPERATOR", "ADMIN")),
+def register_sensor(body: NewSensor, ctx: Ctx = Depends(company_context("PLANT_OPERATOR")),
                     db: Session = Depends(get_db)):
     if db.scalar(select(Sensor).where(Sensor.sensor_id == body.sensor_id)):
         raise HTTPException(409, "Sensor id already exists.")
@@ -163,7 +167,7 @@ def ingest(body: Ingest, x_sensor_key: str = Header(default=""), db: Session = D
     ts = body.timestamp if body.timestamp.tzinfo else body.timestamp.replace(tzinfo=timezone.utc)
     status = flag_single(body.co2_ppm, body.temperature_c, body.humidity_percent, deque(), body.co2_ppm)
     db.add(SensorReading(sensor_id=body.sensor_id, timestamp=ts, sequence_number=body.sequence_number,
-                         month_number=month_of(ts), co2_ppm=body.co2_ppm, temperature_c=body.temperature_c,
+                         period=periods.of(ts), co2_ppm=body.co2_ppm, temperature_c=body.temperature_c,
                          humidity_percent=body.humidity_percent, data_origin="HARDWARE", validation_status=status))
     db.commit()
     return {"accepted": True, "validation_status": status}

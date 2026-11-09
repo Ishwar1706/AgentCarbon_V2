@@ -11,9 +11,8 @@ from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
 from app.models.sensor import Sensor, SensorPeriodSeal, SensorReading
-from app.services.sensor_sim import (
-    STEPS_PER_PERIOD, STEP_MINUTES, month_of, period_end, period_start,
-)
+from app.services import periods
+from app.services.sensor_sim import STEP_MINUTES
 
 DRIFT_FLAG_PERCENT = 8.0
 
@@ -24,7 +23,7 @@ def _hash(data: dict) -> str:
     ).hexdigest()
 
 
-def load_period_frame(db: Session, company_id: str, month: int) -> pd.DataFrame:
+def load_period_frame(db: Session, company_id: str, period: str) -> pd.DataFrame:
     rows = db.execute(
         select(
             SensorReading.sensor_id, SensorReading.timestamp, SensorReading.sequence_number,
@@ -32,7 +31,7 @@ def load_period_frame(db: Session, company_id: str, month: int) -> pd.DataFrame:
             SensorReading.validation_status,
         )
         .join(Sensor, Sensor.sensor_id == SensorReading.sensor_id)
-        .where(Sensor.company_id == company_id, SensorReading.month_number == month)
+        .where(Sensor.company_id == company_id, SensorReading.period == period)
         .order_by(SensorReading.sensor_id, SensorReading.sequence_number)
     ).all()
     frame = pd.DataFrame(rows, columns=[
@@ -65,15 +64,15 @@ def _drift_percent(frame: pd.DataFrame) -> dict[str, float]:
     return out
 
 
-def summarize_period(db: Session, company_id: str, month: int) -> dict | None:
-    frame = load_period_frame(db, company_id, month)
+def summarize_period(db: Session, company_id: str, period: str) -> dict | None:
+    frame = load_period_frame(db, company_id, period)
     if frame.empty:
         return None
     sensors = db.scalars(select(Sensor).where(Sensor.company_id == company_id)
                          .order_by(Sensor.sensor_id)).all()
     last_ts = frame["timestamp"].max()
-    elapsed = int((last_ts - period_start(month)) / pd.Timedelta(minutes=STEP_MINUTES)) + 1
-    expected = min(STEPS_PER_PERIOD, max(1, elapsed))
+    elapsed = int((last_ts - periods.start(period)) / pd.Timedelta(minutes=STEP_MINUTES)) + 1
+    expected = min(periods.steps(period), max(1, elapsed))
     drift = _drift_percent(frame)
     rows = []
     for sensor in sensors:
@@ -123,9 +122,9 @@ def summarize_period(db: Session, company_id: str, month: int) -> dict | None:
     total = sum(r["reading_count"] for r in rows)
     expected_total = sum(r["expected_count"] for r in rows)
     summary = {
-        "company_id": company_id, "month_number": month,
-        "period_start": period_start(month).isoformat(),
-        "period_end": period_end(month).isoformat(),
+        "company_id": company_id, "period": period, "label": periods.label(period),
+        "period_start": periods.start(period).isoformat(),
+        "period_end": periods.end(period).isoformat(),
         "sensor_count": len(rows), "reading_count": total, "expected_count": expected_total,
         "completeness_percent": round(100 * total / expected_total, 2) if expected_total else 0.0,
         "anomaly_percent": round(100 * sum(r["anomaly_count"] for r in rows) / max(total, 1), 2),
@@ -142,16 +141,16 @@ def summarize_period(db: Session, company_id: str, month: int) -> dict | None:
     return summary
 
 
-def seal_period(db: Session, company_id: str, month: int) -> SensorPeriodSeal | None:
+def seal_period(db: Session, company_id: str, period: str) -> SensorPeriodSeal | None:
     existing = db.scalar(select(SensorPeriodSeal).where(
-        SensorPeriodSeal.company_id == company_id, SensorPeriodSeal.month_number == month))
+        SensorPeriodSeal.company_id == company_id, SensorPeriodSeal.period == period))
     if existing:
         return existing
-    summary = summarize_period(db, company_id, month)
+    summary = summarize_period(db, company_id, period)
     if summary is None:
         return None
     seal = SensorPeriodSeal(
-        company_id=company_id, month_number=month,
+        company_id=company_id, period=period,
         summary_json=json.dumps(summary, sort_keys=True), summary_hash=_hash(summary),
         sealed_at=datetime.now(timezone.utc),
     )
@@ -164,31 +163,31 @@ def seal_period(db: Session, company_id: str, month: int) -> SensorPeriodSeal | 
     return seal
 
 
-def get_period_summary(db: Session, company_id: str, month: int) -> dict | None:
+def get_period_summary(db: Session, company_id: str, period: str) -> dict | None:
     seal = db.scalar(select(SensorPeriodSeal).where(
-        SensorPeriodSeal.company_id == company_id, SensorPeriodSeal.month_number == month))
+        SensorPeriodSeal.company_id == company_id, SensorPeriodSeal.period == period))
     if seal:
         data = json.loads(seal.summary_json)
         data.update(status="SEALED", summary_hash=seal.summary_hash, sealed_at=seal.sealed_at.isoformat())
         return data
-    data = summarize_period(db, company_id, month)
+    data = summarize_period(db, company_id, period)
     if data:
         data.update(status="OPEN", summary_hash=None, sealed_at=None)
     return data
 
 
-def period_numbers(db: Session, company_id: str) -> list[int]:
+def period_list(db: Session, company_id: str) -> list[str]:
     rows = db.execute(
-        select(SensorReading.month_number).join(Sensor, Sensor.sensor_id == SensorReading.sensor_id)
-        .where(Sensor.company_id == company_id).distinct().order_by(SensorReading.month_number)
+        select(SensorReading.period).join(Sensor, Sensor.sensor_id == SensorReading.sensor_id)
+        .where(Sensor.company_id == company_id).distinct().order_by(SensorReading.period)
     ).all()
     return [r[0] for r in rows]
 
 
 def list_period_summaries(db: Session, company_id: str, with_sensors: bool = False) -> list[dict]:
     out = []
-    for month in period_numbers(db, company_id):
-        data = get_period_summary(db, company_id, month)
+    for period in period_list(db, company_id):
+        data = get_period_summary(db, company_id, period)
         if data:
             if not with_sensors:
                 data = {k: v for k, v in data.items() if k != "sensors"}
@@ -198,10 +197,10 @@ def list_period_summaries(db: Session, company_id: str, with_sensors: bool = Fal
 
 def refresh_open_trust(db: Session, company_id: str) -> None:
     """Keep Sensor.current_trust in sync with the latest (open or sealed) period."""
-    months = period_numbers(db, company_id)
-    if not months:
+    found = period_list(db, company_id)
+    if not found:
         return
-    data = get_period_summary(db, company_id, months[-1])
+    data = get_period_summary(db, company_id, found[-1])
     for row in (data or {}).get("sensors", []):
         sensor = db.scalar(select(Sensor).where(Sensor.sensor_id == row["sensor_id"]))
         if sensor:

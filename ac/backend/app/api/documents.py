@@ -11,43 +11,51 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.core.database import get_db
 from app.models.access_control import EvidenceDocument
-from app.services.company_access import ALL_VIEWERS, Ctx, claim_or_404, company_context
-from app.services.documents import store_upload
+from app.models.workflows import InfoRequest, MonthlyRequest
+from app.services import periods
+from app.services.company_access import ALL_VIEWERS, Ctx, claim_for_period, company_context
+from app.services.documents import document_view, store_upload
 
 router = APIRouter(prefix="/documents", tags=["documents"])
-
-
-def _view(d: EvidenceDocument) -> dict:
-    return {"document_id": d.document_id, "claim_id": d.claim_id, "document_type": d.document_type,
-            "original_filename": d.original_filename, "content_type": d.content_type, "size_bytes": d.size_bytes,
-            "sha256_hash": d.sha256_hash, "data_label": d.data_label, "verification_status": d.verification_status,
-            "auditor_note": d.auditor_note, "uploaded_at": d.uploaded_at.isoformat()}
+LOCKED = {"APPROVED", "REJECTED"}
 
 
 @router.post("/upload", status_code=201)
-def upload(claim_id: str = Form(...), document_type: str = Form(...), data_label: str = Form("USER_UPLOADED"),
-           file: UploadFile = File(...),
-           ctx: Ctx = Depends(company_context("PLANT_OPERATOR", "ADMIN", require_dataset=True)),
+def upload(period: str = Form(...), document_type: str = Form(...), data_label: str = Form("USER_UPLOADED"),
+           info_request_id: str = Form(""), file: UploadFile = File(...),
+           ctx: Ctx = Depends(company_context("PLANT_OPERATOR", require_dataset=True)),
            db: Session = Depends(get_db)):
-    claim_or_404(ctx.company_id, claim_id)
+    periods.valid(period)
+    claim = claim_for_period(ctx.company_id, period)
+    if claim is None:
+        raise HTTPException(404, f"No data available for {periods.label(period)}.")
+    claim_id = claim["claim_id"]
+    request = db.scalar(select(MonthlyRequest).where(MonthlyRequest.claim_id == claim_id))
+    if request and request.status in LOCKED:
+        raise HTTPException(409, f"This month is already {request.status}; uploads are closed.")
+    if info_request_id:
+        info = db.get(InfoRequest, info_request_id)
+        if not info or info.company_id != ctx.company_id or info.claim_id != claim_id or info.status != "OPEN":
+            raise HTTPException(400, "That information request is not open for this month.")
     meta = store_upload(file, document_type, data_label)
     doc = EvidenceDocument(document_id=f"DOC-{uuid.uuid4().hex[:12].upper()}", company_id=ctx.company_id,
-                           claim_id=claim_id, document_type=document_type, data_label=data_label,
-                           uploaded_by_user_id=ctx.user.id, **meta)
+                           claim_id=claim_id, info_request_id=info_request_id or None, document_type=document_type,
+                           data_label=data_label, uploaded_by_user_id=ctx.user.id, **meta)
     db.add(doc)
     try:
         db.commit()
     except IntegrityError:
         db.rollback()
         (settings.path("upload_dir") / meta["stored_filename"]).unlink(missing_ok=True)
-        raise HTTPException(409, "This exact file was already uploaded for the claim.")
-    return _view(doc)
+        raise HTTPException(409, "This exact file was already uploaded for this month.")
+    return document_view(doc)
 
 
 @router.get("")
-def list_documents(claim_id: str = Query(...), ctx: Ctx = Depends(company_context(*ALL_VIEWERS)),
+def list_documents(period: str = Query(...), ctx: Ctx = Depends(company_context(*ALL_VIEWERS)),
                    db: Session = Depends(get_db)):
-    return [_view(d) for d in db.scalars(select(EvidenceDocument).where(
+    claim_id = periods.claim_id(ctx.company_id, periods.valid(period))
+    return [document_view(d) for d in db.scalars(select(EvidenceDocument).where(
         EvidenceDocument.company_id == ctx.company_id, EvidenceDocument.claim_id == claim_id
     ).order_by(EvidenceDocument.uploaded_at.desc()))]
 
@@ -73,6 +81,8 @@ def verify(document_id: str, body: VerifyBody, ctx: Ctx = Depends(company_contex
            db: Session = Depends(get_db)):
     if body.status not in {"VERIFIED", "REJECTED"}:
         raise HTTPException(400, "status must be VERIFIED or REJECTED")
+    if body.status == "REJECTED" and not (body.note or "").strip():
+        raise HTTPException(400, "Give a reason when rejecting a document.")
     doc = db.scalar(select(EvidenceDocument).where(EvidenceDocument.document_id == document_id,
                                                    EvidenceDocument.company_id == ctx.company_id))
     if not doc:
@@ -80,4 +90,4 @@ def verify(document_id: str, body: VerifyBody, ctx: Ctx = Depends(company_contex
     doc.verification_status, doc.auditor_note = body.status, body.note
     doc.verified_by_user_id, doc.verified_at = ctx.user.id, datetime.now(timezone.utc)
     db.commit()
-    return _view(doc)
+    return document_view(doc)

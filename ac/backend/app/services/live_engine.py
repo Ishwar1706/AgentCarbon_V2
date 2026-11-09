@@ -1,7 +1,7 @@
 """Live sensor simulator. Runs inside the API process (no external script needed).
 
 Each tick advances the company's *simulated clock* by 15 minutes and writes one
-reading per sensor. When a 30-day period is complete it is sealed into a monthly
+reading per sensor. When a calendar month is complete it is sealed into a monthly
 dataset that later verification cycles consume.
 """
 from __future__ import annotations
@@ -18,13 +18,10 @@ from sqlalchemy.orm import Session
 from app.core.database import SessionLocal
 from app.models.sensor import Sensor, SensorReading
 from app.models.workflows import Company
-from app.services import sensor_rollup
+from app.services import periods, sensor_rollup
 from app.services.company_data import COMPANY_PROFILES, read_company_dataset
 from app.services.sensor_profiles import sensor_profiles
-from app.services.sensor_sim import (
-    EPOCH, STEPS_PER_PERIOD, STEP_MINUTES, LiveBaseline, SensorLiveState,
-    live_reading, month_of, period_start,
-)
+from app.services.sensor_sim import STEP_MINUTES, LiveBaseline, SensorLiveState, live_reading
 
 log = logging.getLogger("agentcarbon.live")
 FAULT_KINDS = {"STUCK", "DRIFT", "SPIKE", "DROPOUT"}
@@ -36,7 +33,7 @@ class CompanySim:
         self.running = False
         self.interval = 2.0
         self.next_due = 0.0
-        self.next_ts = EPOCH
+        self.next_ts = periods.start("2026-01")
         self.states: dict[str, SensorLiveState] = {}
         self.baseline: LiveBaseline | None = None
         self.emitted = 0
@@ -55,7 +52,7 @@ class CompanySim:
             Sensor, Sensor.sensor_id == SensorReading.sensor_id).where(Sensor.company_id == self.company_id))
         if last_ts is not None:
             if last_ts.tzinfo is None:
-                last_ts = last_ts.replace(tzinfo=EPOCH.tzinfo)
+                last_ts = last_ts.replace(tzinfo=periods.start("2026-01").tzinfo)
             self.next_ts = last_ts + timedelta(minutes=STEP_MINUTES)
         base_df = read_company_dataset(self.company_id, "historical_scd40_readings.csv") \
             if self.company_id in COMPANY_PROFILES else None
@@ -76,11 +73,11 @@ class CompanySim:
             new_states[sensor.sensor_id] = state
         self.states = new_states
 
-    def current_month(self) -> int:
-        return month_of(self.next_ts)
+    def current_period(self) -> str:
+        return periods.of(self.next_ts)
 
     def steps_done_in_period(self) -> int:
-        return int((self.next_ts - period_start(self.current_month())).total_seconds() // (STEP_MINUTES * 60))
+        return int((self.next_ts - periods.start(self.current_period())).total_seconds() // (STEP_MINUTES * 60))
 
 
 class LiveEngine:
@@ -155,19 +152,19 @@ class LiveEngine:
                     if reading:
                         rows.append(reading)
                 sim.next_ts = ts + timedelta(minutes=STEP_MINUTES)
-                crossed = month_of(sim.next_ts) != month_of(ts)
+                crossed = periods.of(sim.next_ts) != periods.of(ts)
                 if crossed or len(rows) >= 4000:
                     written += self._flush(db, rows)
                     rows = []
                 if crossed:
-                    seal = sensor_rollup.seal_period(db, company_id, month_of(ts))
+                    seal = sensor_rollup.seal_period(db, company_id, periods.of(ts))
                     if seal:
-                        sealed.append(month_of(ts))
+                        sealed.append(periods.of(ts))
             written += self._flush(db, rows)
             sim.emitted += written
         sensor_rollup.refresh_open_trust(db, company_id)
-        return {"readings_written": written, "sealed_months": sealed,
-                "simulated_time": sim.next_ts.isoformat(), "current_month": sim.current_month()}
+        return {"readings_written": written, "sealed_periods": sealed,
+                "simulated_time": sim.next_ts.isoformat(), "current_period": sim.current_period()}
 
     @staticmethod
     def _flush(db: Session, rows: list[dict]) -> int:
@@ -179,7 +176,7 @@ class LiveEngine:
 
     def complete_month(self, db: Session, company_id: str) -> dict[str, Any]:
         sim = self.sim(db, company_id)
-        remaining = STEPS_PER_PERIOD - sim.steps_done_in_period()
+        remaining = periods.steps(sim.current_period()) - sim.steps_done_in_period()
         return self.advance(db, company_id, max(1, remaining))
 
     # ----------------------------------------------------------- faults
@@ -205,9 +202,10 @@ class LiveEngine:
         done = sim.steps_done_in_period()
         return {
             "company_id": company_id, "running": sim.running, "interval_seconds": sim.interval,
-            "simulated_time": sim.next_ts.isoformat(), "current_month": sim.current_month(),
-            "steps_done_in_period": done, "steps_per_period": STEPS_PER_PERIOD,
-            "period_progress_percent": round(100 * done / STEPS_PER_PERIOD, 1),
+            "simulated_time": sim.next_ts.isoformat(), "current_period": sim.current_period(),
+            "current_label": periods.label(sim.current_period()),
+            "steps_done_in_period": done, "steps_per_period": periods.steps(sim.current_period()),
+            "period_progress_percent": round(100 * done / periods.steps(sim.current_period()), 1),
             "readings_emitted_this_session": sim.emitted,
             "sensor_count": len(sim.states),
             "active_faults": {sid: s.fault["kind"] for sid, s in sim.states.items() if s.fault},

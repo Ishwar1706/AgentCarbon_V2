@@ -1,4 +1,5 @@
 const BASE = (import.meta.env.VITE_API_URL || "") + "/api/v1";
+const NON_JSON_RESPONSE = "The server returned a web page instead of data - the backend is not running the latest code. Restart `python run.py`.";
 let token = localStorage.getItem("ac_token") || "";
 let onUnauthorized = () => {};
 
@@ -25,6 +26,10 @@ async function request(method, path, { params, body, form, raw } = {}) {
   }
   const res = await fetch(url, { method, headers, body: payload });
   if (res.status === 401 && token && !path.startsWith("/auth/login")) onUnauthorized();
+  const contentType = res.headers.get("content-type") || "";
+  if (!raw && res.status !== 204 && !/application\/(?:[\w.+-]*\+)?json\b/i.test(contentType)) {
+    throw new Error(NON_JSON_RESPONSE);
+  }
   if (!res.ok) {
     let message = `Request failed (${res.status})`;
     try {
@@ -41,11 +46,14 @@ export const api = {
   get: (p, params) => request("GET", p, { params }),
   post: (p, body, params) => request("POST", p, { body, params }),
   patch: (p, body, params) => request("PATCH", p, { body, params }),
+  put: (p, body, params) => request("PUT", p, { body, params }),
   del: (p, params) => request("DELETE", p, { params }),
   upload: (p, form, params) => request("POST", p, { form, params }),
   login: async (email, password) => {
     const form = new URLSearchParams({ username: email, password });
     const res = await fetch(BASE + "/auth/login", { method: "POST", body: form });
+    const contentType = res.headers.get("content-type") || "";
+    if (!/application\/(?:[\w.+-]*\+)?json\b/i.test(contentType)) throw new Error(NON_JSON_RESPONSE);
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.detail || "Sign-in failed");
     return data;

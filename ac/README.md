@@ -13,7 +13,7 @@ Sensor-backed, multi-agent pre-verification of monthly industrial carbon claims.
 5. **Audit registry.** Finalised claims are written to an append-only **hash-chained ledger**; reports can be exported as HTML/JSON and verified for tampering. (Local tamper-evident ledger — not a public blockchain.)
 
 ## Roles
-Plant operator (own company only) · Auditor (admin-verified) · Regulator viewer (read-only) · Admin (approves companies/auditors).
+Plant operator (own company only) · Auditor (admin-verified) · Credit buyer (approved, registered credits only) · Admin (registration approvals and account maintenance only).
 
 ## What changed from the first version (fixes)
 
